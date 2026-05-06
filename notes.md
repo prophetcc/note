@@ -9,6 +9,8 @@
 - [Q4: OpenCode agent 架构 与 context 管理策略](#q4-opencode-agent-架构-与-context-管理策略) — Primary/Subagent 双层、与 Claude Code "新会话"建议的冲突、按场景+模型决策
 - [Q5: 前端测试方案：Storybook + Playwright + toHaveScreenshot](#q5-前端测试方案storybook--playwright--tohavescreenshot) — 各层职责、E2E 怎么测得稳、痛点与解决方案
 - [Q6: 视觉回归 CI 工作流——三种方案](#q6-视觉回归-ci-工作流三种方案) — 自托管两遍跑、本地预 approve、CI artifact、SaaS 一遍跑的取舍
+- [Q7: OpenSpec + Superpowers 组合工作流](#q7-openspec--superpowers-组合工作流) — 社区共识、CLAUDE.md 串联、brainstorm→propose→plan→subagent-TDD→verify→archive
+- [Q8: CLAUDE.md 真的管用吗？Skill 不是要手动调用吗？](#q8-claudemd-真的管用吗skill-不是要手动调用吗) — Skill 自动 trigger ≠ Slash 手敲，三层约束强度（CLAUDE.md / Skill / Hook）
 
 ---
 
@@ -642,3 +644,244 @@ SaaS 把新截图标为基线 → PR 状态变绿 ✅ → merge
 ## 一句话
 
 **自托管 = 改 UI 的 PR 跑两遍 CI（除非本地 Linux 预 approve）；SaaS = 一遍 CI + 网页 approve**。两遍是自托管的代价，但只在改 UI 的 PR 上承担——平时绝大多数 PR 还是一遍过。**取舍核心是预算 vs 工作流体验**。
+
+---
+
+# Q7: OpenSpec + Superpowers 组合工作流
+
+> 综合官方文档 + 社区实战（Austin Xu 实战、heyuan110 Triple Stack 复盘、OpenSpec Issue #780）的整合方案。
+> 背景：OpenSpec 解决"是什么 + 长期账本"（呼应 Q2、Q3），Superpowers 解决"怎么干 + 工程纪律"（强 TDD + subagent + fresh review）。
+
+## 一、社区共识（决定怎么搭的 4 条关键事实）
+
+1. **两者不会自动串联**——`/opsx:apply` 不会触发 Superpowers 的 TDD/code-review，必须用 `CLAUDE.md` 把它们粘起来
+2. **OpenSpec 不擅长冷启动**——从一句话需求里没法 bootstrap 出架构；Superpowers 的 `/brainstorm` 擅长结构化反问
+3. **职责自然分裂**——Superpowers 管纪律（TDD / subagent / fresh review），OpenSpec 管账本（spec / delta / archive）
+4. **重叠区在 "tasks"**——OpenSpec 有 `tasks.md`，Superpowers 有 `plan.md`。**别两个都用**：OpenSpec tasks = 高层"做哪几件"，Superpowers plan = 施工图"每件怎么做"
+
+## 二、角色分工
+
+| 阶段 | 用谁 | 产物 |
+|------|------|------|
+| 1. 头脑风暴 | Superpowers `/brainstorm` | 结构化设计草案 |
+| 2. 立 proposal | OpenSpec `/opsx:propose` | `proposal.md` + `design.md` + `tasks.md` + spec delta |
+| 3. 细化 plan | Superpowers `/write-plan`(吃 `tasks.md`) | 2-5 分钟粒度 plan，含文件路径 + TDD 步骤 |
+| 4. 实施 | Superpowers `subagent-driven-development`(**绕过 `/opsx:apply`**) | 代码 + 测试，TDD 红绿循环 |
+| 5. 验证 | OpenSpec `/opsx:verify` + Superpowers fresh-agent review | 验证报告 |
+| 6. 归档 | OpenSpec `/opsx:archive` | `specs/` 增量更新，change 入 archive |
+
+## 三、完整工作流图
+
+```
+一句话需求
+   ↓
+/brainstorm          ← Superpowers 反问澄清
+   ↓ 设计草案
+/opsx:propose        ← OpenSpec 立账：proposal + design + tasks + spec delta
+   ↓ tasks.md
+/write-plan          ← Superpowers 拆细：文件路径 + 代码片段 + TDD 步骤
+   ↓ plan.md
+subagent-driven impl ← Superpowers 执行：fresh subagent / task，强制 TDD
+   ↓ 代码 + 测试
+fresh-agent review   ← Superpowers 复审：干净 context 看代码质量
+   ↓
+/opsx:verify         ← OpenSpec 对账：tasks.md 是否全部完成
+   ↓
+/opsx:archive        ← OpenSpec 归档：specs/ 增量更新
+   ↓
+specs/ 成为下次需求的输入       （回到 Q3 的"扫已有 spec"）
+```
+
+## 四、关键整合点：CLAUDE.md 必须写
+
+社区踩过的坑——两套系统不会自动协作，必须显式声明（参考 Austin Xu 实战）：
+
+```md
+## OpenSpec × Superpowers 协作约定
+
+- 任何新需求先 /brainstorm，产出后再走 /opsx:propose
+- /opsx:propose 后不要直接 /opsx:apply，改用 Superpowers 流程：
+  1. /write-plan 把 tasks.md 拆成 2-5 分钟粒度
+  2. subagent-driven-development 执行，强制 TDD（RED→GREEN→REFACTOR）
+- 每个 task 完成后用 fresh subagent 做 code review
+- 全部完成后跑 /opsx:verify 对账，再 /opsx:archive
+- specs/ 是真理之源；做新需求前先 openspec list --specs 扫一遍
+```
+
+没这段，`/opsx:apply` 会直接写代码不写测试，Superpowers 形同虚设。
+
+> ⚠️ **强度提醒**：CLAUDE.md 不是硬约束，详见 [Q8](#q8-claudemd-真的管用吗skill-不是要手动调用吗)。这段管软约定层；硬保证（必须 verify、必须 tests pass）需要 settings.json hook。
+
+## 五、跟其他笔记的对应
+
+| 概念 | 在组合工作流的位置 |
+|------|-----------------|
+| [Q1 Council](#q1-council-是什么) | `/brainstorm` 阶段可让 Council 同题多解，提高设计质量 |
+| [Q2 Plan vs OpenSpec](#q2-opencode-plan-agent-vs-openspec)（临时大脑 vs 长期账本） | Superpowers plan = 临时施工图（per-feature），OpenSpec specs = 长期账本（系统当前态） |
+| [Q3 OpenSpec 扫描机制](#q3-openspec-做新需求时会扫之前的-spec-吗) | CLAUDE.md 显式写"propose 前先 `openspec list --specs`"做兜底 |
+| [Q4 Context 资源 vs 负担](#q4-opencode-agent-架构-与-context-管理策略) | Superpowers fresh subagent / fresh review = 把 context 当负担处理；OpenSpec 落盘 = 让"开新会话"有依据 |
+
+## 六、社区踩坑要点
+
+- **不要做 4-5 层栈**——三层（Claude Code + OpenSpec + Superpowers）已在 overkill 边缘，再加 OMOS / spec-kit 会卡住自己
+- **小改动跳过整套**——bug fix、改文案不要 propose，直接动手；spec-driven 是给"feature 级"用的
+- **plan 不回灌 spec**——Superpowers plan 留在 `docs/plans/<date>` 即可，spec 只接受 OpenSpec 的 delta
+- **`/opsx:apply` 在组合方案里基本不用**——会绕过 TDD 纪律，直接走 Superpowers 执行，最后 `/opsx:verify` 对账
+- **plan 完成后及时归档**——按日期归档，不要让 `docs/plans/` 累积成第二个"事件日志 spec"
+- **真实数据点**：Austin Xu 实战 444 行代码 / 86 个测试 / 3 小时设计到归档 / 近零返工
+
+## 七、什么时候不结合
+
+| 场景 | 推荐 |
+|------|-----|
+| Prototype / MVP / 一次性 demo | 只用 Superpowers（OpenSpec 归档负担划不来） |
+| 多人维护、长期项目、需求要审计 | **OpenSpec 主线 + Superpowers 执行**（本文方案） |
+| 对 TDD 不感冒的探索性项目 | 只用 OpenSpec（spec-driven 但实现自由） |
+| 简单 bug fix / 文案改动 | 都跳过，直接动手 |
+| 单人 / 小项目 / 短周期 | 只用 Superpowers，spec 用 plan 凑合（呼应 Q2） |
+
+## 八、一句话
+
+**Superpowers 管"怎么干"（TDD + subagent + fresh review），OpenSpec 管"是什么 + 留账本"（spec delta + archive）**——通过 `CLAUDE.md` 显式串联，brainstorm 用 Superpowers 启动，propose 用 OpenSpec 立账，执行**绕过 `/opsx:apply` 改用 subagent + TDD**，收尾 `/opsx:verify` + `/opsx:archive` 让 spec 沉淀。组合方案适合中大型长期项目；小项目挑一个就够。
+
+## 参考资料
+
+- [OpenSpec workflows.md](https://github.com/Fission-AI/OpenSpec/blob/main/docs/workflows.md)
+- [OpenSpec opsx.md](https://github.com/Fission-AI/OpenSpec/blob/main/docs/opsx.md)
+- [Superpowers writing-plans/SKILL.md](https://github.com/obra/superpowers/blob/main/skills/writing-plans/SKILL.md)
+- [Superpowers brainstorming/SKILL.md](https://github.com/obra/superpowers/blob/main/skills/brainstorming/SKILL.md)
+- [Stacking OpenSpec and Superpowers: A Combined SDD Workflow — Austin Xu](https://medium.com/@austin.xyz/stacking-openspec-and-superpowers-a-combined-sdd-workflow-c03fbf47539c)
+- [Claude Code + OpenSpec + Superpowers: Triple Stack or Overkill? — heyuan110](https://www.heyuan110.com/posts/ai/2026-04-09-claude-code-openspec-superpowers/)
+- [Issue #780: Distribute OpenSpec as a Superpowers skill pack](https://github.com/Fission-AI/OpenSpec/issues/780)
+- [Spec Kit vs. Superpowers — DEV Community](https://dev.to/truongpx396/spec-kit-vs-superpowers-a-comprehensive-comparison-practical-guide-to-combining-both-52jj)
+
+---
+
+# Q8: CLAUDE.md 真的管用吗？Skill 不是要手动调用吗？
+
+> 接 Q7 的疑虑：CLAUDE.md 里写一堆"先 brainstorm 再 propose"、"绕过 /opsx:apply 用 subagent + TDD"，看起来只是文字——skill 不就是用户敲 `/xxx` 才跑吗？agent 不会自动调用，这段配置不是白写？
+
+## 一、问题触发：把 Claude Code 当"命令式工具集合"
+
+这个怀疑成立的前提是——**Claude Code 是个工具盒，用户输什么命令它跑什么**。在这个心智模型下：
+- skill 等同于 slash command
+- 用户不敲就不跑
+- CLAUDE.md 就是装饰文字
+
+但这是 Claude Code 早期的模型，或者说"对它的旧理解"。**现代 Claude Code 是个 agent**——它能读 skill 描述、自己挑工具、根据 CLAUDE.md 调整行为。怀疑的根源是没分清"agent 主动选工具" vs "用户手动敲命令"这两件事。
+
+把 Q7 那段 CLAUDE.md 当"白写"，本质是把 Skill 误认成 Slash command。
+
+## 二、Skill ≠ Slash command（关键分辨）
+
+现代 Claude Code 同一个 plugin（如 Superpowers）里**同时存在两种东西**：
+
+| | Slash command | Skill |
+|---|---|---|
+| 文件位置 | `commands/<name>.md` | `skills/<name>/SKILL.md` |
+| 触发方式 | **用户手敲 `/xxx`** | **agent 读 frontmatter description 自动匹配** |
+| 谁来选 | 用户 | agent |
+| 例子 | `/opsx:propose`、`/brainstorm` | `brainstorming`、`writing-plans`、`subagent-driven-development` |
+
+Skill 的 YAML frontmatter 长这样：
+
+```yaml
+---
+name: brainstorming
+description: Use when user has a vague idea and needs structured exploration...
+---
+```
+
+Claude 每次回复前会扫所有可用 skills 的 description，**匹配到就主动加载并执行**。所以：
+- 用户说"想加个登录功能"（模糊） → agent 自己 trigger brainstorming skill
+- 用户说"我有 tasks.md 了" → agent 自己 trigger writing-plans skill
+- **不需要敲 `/brainstorm` 或 `/write-plan`**
+
+Superpowers 之所以能形成一套工作流，**核心是 skill 自动 trigger 机制**，不是 slash command。slash command 只是给"想手动控制"的用户额外的入口。
+
+## 三、三层约束强度
+
+| 强度 | 机制 | 性质 | 例子 |
+|-----|------|------|------|
+| **弱** | CLAUDE.md 自然语言 | 偏好提示，agent 读了会尝试遵守 | "写代码先写测试" |
+| **中** | Skill description 自动匹配 | agent 自己挑工具，结构化触发 | brainstorming skill |
+| **强** | settings.json **Hook** | harness 层硬拦截，agent 绕不过 | commit 前必须跑测试 |
+
+- CLAUDE.md 不是硬约束——长会话会稀释、agent 会忘、可以被绕过
+- Skill 自动 trigger 才是 Q7 里"agent 自动跑"的真正机制
+- Hook 是命令调用前由 Claude Code 主程序运行的脚本，failed 直接 block 工具调用
+
+## 四、CLAUDE.md 里每种内容的实际效果
+
+| 写在 CLAUDE.md 里 | 效果 | 原因 |
+|---|---|---|
+| "写代码先写测试 (TDD)" | ✅ 强 | 自然语言行为指令，agent 直接照做 |
+| "specs/ 是真理之源，propose 前先扫" | ✅ 强 | 行为指令配合 skill |
+| "新需求先 brainstorm 再 propose" | ✅ 中-强 | brainstorming skill 自动触发，CLAUDE.md 强化优先级 |
+| "不要 /opsx:apply，改走 subagent" | ⚠️ 中 | agent 会偏向那个选择，但不是硬阻止 |
+| "用户说 X 时执行 /yyy" | ❌ 弱 | slash command 必须人敲，写了也没用 |
+| "提交前必须跑测试，否则拒绝" | ❌ 弱 | 硬约束需要 hook，CLAUDE.md 长会话会忘 |
+
+**口诀**：软约定写 CLAUDE.md，自动触发靠 skill description，硬约束靠 hook。
+
+## 五、Hook 才是真正的硬约束
+
+`settings.json` 里：
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [{
+      "matcher": "Write|Edit",
+      "hooks": [{ "type": "command", "command": "<检查脚本>" }]
+    }]
+  }
+}
+```
+
+Hook 是 Claude Code 主程序在 agent 调用工具**之前**运行的命令——脚本 exit code 非 0，工具调用直接被 block。**agent 看不见、绕不过**。
+
+例：
+- commit 前 hook 跑 `npm test`，挂了拒绝写文件
+- 写代码前 hook 检查 spec 文件存在，否则拒绝
+- archive 前 hook 强制要求 verify 通过
+
+## 六、所以 Q7 那段 CLAUDE.md 真的有用吗
+
+**有用，但不是因为 CLAUDE.md "命令" agent**——是因为：
+
+1. Superpowers 的 skills（brainstorming / writing-plans / subagent-driven-development）**自动 trigger**，不靠 CLAUDE.md
+2. CLAUDE.md 里的自然语言规则（TDD、specs/ 优先）agent **会读会试着照办**
+3. "绕过 `/opsx:apply` 改用 subagent" 这种**工具偏好**，写在 CLAUDE.md 里 agent 会倾向遵守
+4. 真要硬保证（commit 前 verify、archive 前 tests pass）需要加 hook
+
+把 Q7 的 CLAUDE.md 段落理解为**软约定层**——它管 80% 场景；剩下 20% 真要拦住的事，靠 hook。
+
+## 七、修正后的 CLAUDE.md 写法
+
+不要写这种：
+
+```md
+- 用户说新需求时执行 /brainstorm   ← ❌ slash 不会自动执行
+- agent 必须调用 /opsx:propose       ← ❌ 同上
+```
+
+要写这种：
+
+```md
+- 新需求一开始要做结构化反问澄清（依赖 brainstorming skill）   ← ✅ skill 自动 trigger
+- 写代码必须先写测试，按红绿循环来                              ← ✅ 行为指令
+- specs/ 是真理之源，做新需求前先 openspec list --specs        ← ✅ 行为指令
+- 涉及多文件大改时优先用 subagent 隔离 context                ← ✅ 工具偏好
+- 不要直接执行 /opsx:apply，改走 Superpowers 的 subagent      ← ✅ 工具偏好（agent 会避开）
+```
+
+**差别是写"行为期望"和"工具偏好"，而不是"敲哪个 slash"**。
+
+## 八、一句话
+
+CLAUDE.md 是**软约定**，靠 agent 自觉；Skill description 是**自动匹配机制**，agent 真会主动选用，**不需要敲 slash**；Hook 是**硬拦截**，绕不过。Q7 那段 CLAUDE.md 真有用——但它只承担软约定层，自动行为靠 Superpowers 的 skill 机制（agent 自己 trigger），硬保证靠 hook。怀疑的根源是把 Claude Code 当"用户敲命令的工具盒"，而它现在是**能自己挑工具的 agent**。
+
+## 九、回头改 Q7
+
+[Q7 第四节"CLAUDE.md 必须写"](#四关键整合点claudemd-必须写) 写得过于乐观，没说清楚强度差异。配合本节理解：那段 CLAUDE.md 是软约定 + 工具偏好提示，**真正让"agent 自动走 brainstorm → propose → plan → subagent-TDD → verify → archive"流程的，是 Superpowers skill 的 description 自动匹配**。CLAUDE.md 强化优先级、消歧、注入项目约束（如"specs/ 是真理之源"），但不是它在驱动流程。

@@ -365,7 +365,7 @@ import ElementPlus from 'element-plus'
 config.global.plugins = [ElementPlus]
 ```
 
-## 编写测试后：运行测试
+## 编写测试后：运行与验证覆盖率
 
 写完测试后务必立即运行。不运行的测试比没有测试更糟糕——它们给人虚假的信心。
 
@@ -389,6 +389,12 @@ npx vitest run --coverage
 - 基于过时假设来测试实现
 - **Vue 组件测试中未注册自定义指令**
 
+### 覆盖率要求
+
+尽可能全面覆盖所有分支，包括：正常路径、异常路径、边界值（null/undefined/空值/极值）。
+
+写完测试后运行 `npx vitest run --coverage` 确认覆盖率。如有未覆盖的分支，说明原因（不可达代码、防御性代码等）。
+
 ## 完成前检查清单
 
 - [ ] 每个测试都有有意义的断言（不只是 `toBeDefined`）
@@ -399,3 +405,4 @@ npx vitest run --coverage
 - [ ] 测试文件遵循项目命名规范
 - [ ] 没有过度 mock——尽可能测试真实代码路径
 - [ ] Vue 组件测试中已正确处理自定义指令（全局 setup 或单测注册）
+- [ ] 运行了 coverage 并确认覆盖率，未覆盖的分支已说明原因

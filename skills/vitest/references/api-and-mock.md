@@ -1,18 +1,20 @@
 # Vitest API 与 Mock 参考
 
-## Vitest vs Jest API 对照
+## Mock 约定
 
-| 应该用（Vitest） | 不要用（Jest） |
+mock 封装层，不要 mock 底层。只 mock 有副作用或 jsdom 未实现的依赖，其余走真实逻辑。
+
+| 需要 mock 的对象 | mock 方式 |
 |---|---|
-| `vi.fn()` | `jest.fn()` |
-| `vi.mock('module')` | `jest.mock('module')` |
-| `vi.spyOn(obj, 'method')` | `jest.spyOn(obj, 'method')` |
-| `vi.useFakeTimers()` | `jest.useFakeTimers()` |
-| `vi.stubGlobal('fetch', fn)` | 手动全局赋值 |
-| `vi.clearAllMocks()` | `jest.clearAllMocks()` |
-| `vi.restoreAllMocks()` | `jest.restoreAllMocks()` |
+| HTTP 请求 | mock 项目封装的 request 模块，不要 mock axios 本身 |
+| localStorage / sessionStorage | `vi.stubGlobal('localStorage', { getItem: vi.fn(), setItem: vi.fn(), removeItem: vi.fn() })` |
+| window.location | `vi.stubGlobal('location', { href: '', assign: vi.fn(), replace: vi.fn() })` |
+| navigator.clipboard | `vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn() } })` |
+| URL.createObjectURL | `vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:fake-url'), revokeObjectURL: vi.fn() })` |
+| ResizeObserver | `vi.stubGlobal('ResizeObserver', vi.fn(() => ({ observe: vi.fn(), disconnect: vi.fn() })))` |
+| Date / 定时器 | `vi.useFakeTimers()` + `vi.setSystemTime()`，测完调 `vi.useRealTimers()` |
 
-## 模块 Mock
+## 模块 Mock 示例
 
 ```javascript
 // Mock 整个模块
@@ -38,7 +40,7 @@ vi.mock('./utils', async (importOriginal) => {
 })
 ```
 
-## 异步测试
+## 异步测试示例
 
 ```javascript
 test('获取用户数据', async () => {
@@ -52,26 +54,9 @@ test('网络错误时拒绝 promise', async () => {
 })
 ```
 
-## 快照与内联快照
-
-谨慎使用——快照写起来容易，维护起来难。优先使用明确的断言。快照适用于：
-- 复杂但稳定的序列化输出（AST、渲染后的 HTML）
-- 对特定输出的回归保护
-
-```javascript
-test('序列化配置', () => {
-  expect(generateConfig()).toMatchInlineSnapshot(`
-    {
-      "port": 3000,
-      "host": "localhost",
-    }
-  `)
-})
-```
-
 ## 工具函数测试示例
 
-纯函数直接调用验证返回值：
+纯函数直接调用验证返回值，不需要 mock：
 
 ```javascript
 import { describe, test, expect } from 'vitest'
@@ -122,5 +107,20 @@ describe('auth 工具函数', () => {
     saveToken('xyz')
     expect(localStorage.setItem).toHaveBeenCalledWith('token', 'xyz')
   })
+})
+```
+
+## 快照与内联快照
+
+谨慎使用——快照写起来容易，维护起来难。优先使用明确的断言。适用于复杂但稳定的序列化输出和回归保护。
+
+```javascript
+test('序列化配置', () => {
+  expect(generateConfig()).toMatchInlineSnapshot(`
+    {
+      "port": 3000,
+      "host": "localhost",
+    }
+  `)
 })
 ```

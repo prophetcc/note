@@ -1,6 +1,6 @@
 ---
 name: vitest
-description: "编写高质量的 Vitest 单元测试。当用户要求编写测试、单元测试或测试用例，且项目使用 Vitest 时触发此 skill。当用户提到 'vitest'、'vi.fn'、'vi.mock'、'vi.spyOn'，或希望为基于 Vite 的项目增加测试覆盖率时也会触发。即使用户只是说'给这个文件写测试'或'增加测试覆盖率'，也应检查项目是否使用 Vitest（查看 package.json 或 vitest.config 文件），如果是则使用此 skill。"
+description: "编写 Vitest 单元测试。当用户要求写测试、单测、补测试、加覆盖率，或提到 vitest/vi.mock/vi.fn 等 API 时触发。用户只说'写测试'时，应检查项目是否使用 Vitest（查看 package.json 或 vitest.config），如果是则使用此 skill。不适用于 Cypress、Playwright 等 E2E 框架或 Mocha、pytest 等其他测试框架。"
 ---
 
 # 编写 Vitest 测试
@@ -72,11 +72,9 @@ describe('UserService', () => {
 
 ## Vitest API
 
-这是 Vitest，不是 Jest。使用 `vi.fn()` / `vi.mock()` / `vi.spyOn()`，不要用 `jest.*`。
+所有 mock API 使用 `vi.*`，不要用 `jest.*`。Mock 清理：在配置中设 `restoreMocks: true`（推荐），或在 `afterEach` 中调用 `vi.restoreAllMocks()`。
 
-Mock 清理：在配置中设 `restoreMocks: true`（推荐），或在 `afterEach` 中调用 `vi.restoreAllMocks()`。
-
-> API 对照表、模块 mock、异步测试、快照的详细示例见 `references/api-and-mock.md`
+> Mock 约定、模块 mock、异步测试、快照的详细示例见 `references/api-and-mock.md`
 
 ## 编写测试后：运行与验证
 

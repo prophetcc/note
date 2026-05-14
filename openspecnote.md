@@ -16,8 +16,8 @@
 | `/opsx:ff` | 快进，一次性生成所有规划产物 |
 | `/opsx:apply` | 执行任务，编写代码并更新产物 |
 | `/opsx:verify` | 验证实现是否匹配产物（完整性、正确性、一致性） |
-| `/opsx:sync` | 将变更中的 delta specs 同步/集成到主 specs 目录 |
-| `/opsx:archive` | 将已完成的变更归档，保留完整审计记录 |
+| `/opsx:sync` | 将变更中的 delta specs 同步到主 specs 目录（可选，archive 会自动处理） |
+| `/opsx:archive` | 将已完成的变更归档（自动检测未同步的 delta spec 并提示合并） |
 | `/opsx:bulk-archive` | 批量归档多个已完成的变更，检测并解决 spec 冲突 |
 | `/opsx:onboard` | 引导式教程，使用实际代码库演示完整 OpenSpec 工作流 |
 
@@ -120,7 +120,47 @@ Claude Code, Cursor, Windsurf, GitHub Copilot, Cline, RooCode, Gemini CLI, Codex
 
 ---
 
-## 五、全局选项
+## 五、Profile 与指令可用性
+
+默认的 core profile 只包含 5 个指令：`explore`、`propose`、`apply`、`sync`、`archive`。
+
+其余指令（`new`、`continue`、`ff`、`verify`、`bulk-archive`、`onboard`）属于 expanded profile，需要切换：
+
+```bash
+openspec config profile   # 选择 expanded
+openspec update           # 更新指令文件
+```
+
+### `/opsx:new` vs `/opsx:propose`
+
+| | `/opsx:new` | `/opsx:propose` |
+|---|---|---|
+| 创建目录 | 是 | 是 |
+| 自动生成产物 | 不会，需要后续 `continue` 或 `ff` | 一步到位全部生成 |
+| 适用场景 | 想逐步控制每个产物的生成 | 快速开始 |
+
+`/opsx:new` 用法：
+
+```
+/opsx:new <change-name>
+```
+
+只创建 `openspec/changes/<change-name>/` 目录脚手架，不生成任何产物文件。后续流程：
+
+```
+/opsx:new add-logout-button
+→ Created change. Ready to create: proposal
+
+/opsx:continue              # 逐个生成产物
+→ 或
+/opsx:ff                    # 一次全部生成
+
+/opsx:apply                 # 开始写代码
+```
+
+---
+
+## 六、全局选项
 
 | 选项 | 说明 |
 |---|---|
